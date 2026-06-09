@@ -1,0 +1,23 @@
+{
+    "title": "My Profile",
+    "account_information": "ACCOUNT INFORMATION",
+    "security_status": "SECURITY STATUS",
+    "display_name": "Display Name",
+    "phone_number": "Phone Number",
+    "gender": "Gender",
+    "position": "Position",
+    "not_set": "Not set",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "save_profile": "Save Profile",
+    "biometric_verified": "Biometric Verified",
+    "biometric_ok": "Everything looks good",
+    "action_required": "Action Required",
+    "register_face_prompt": "Register your face for attendance",
+    "register": "REGISTER",
+    "language_settings": "LANGUAGE SETTINGS",
+    "photo_updated": "Profile photo updated successfully",
+    "photo_failed": "Failed to update photo",
+    "profile_updated": "Profile updated successfully",
+    "profile_failed": "Failed to update profile"
+}

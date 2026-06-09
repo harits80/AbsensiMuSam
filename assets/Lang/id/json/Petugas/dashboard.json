@@ -1,0 +1,20 @@
+{
+    "dashboard_title": "Dashboard Petugas",
+    "total_members": "Total Member",
+    "active_shift": "Shift Aktif",
+    "today_attendance": "Absensi Hari Ini",
+    "recent_activity": "Aktivitas Terbaru",
+    "weekly_overview": "Rekap Mingguan",
+    "no_recent_activity": "Tidak ada aktivitas terbaru",
+    "this_week": "MINGGU INI",
+    "hours": "JAM",
+    "total_hours": "Jam",
+    "office_location": "Lokasi Kantor",
+    "selfie_gps": "Selfie & GPS",
+    "check_in": "Masuk",
+    "check_out": "Keluar",
+    "on_time": "TEPAT WAKTU",
+    "join_new_organization": "Gabung Organisasi Baru",
+    "switch_organization": "Ganti Organisasi",
+    "activity": "Aktivitas"
+}

@@ -1,0 +1,98 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:6611366526790277060",
+      "lastPropertyId": "13:3978973541668453485",
+      "name": "BiometricEntity",
+      "properties": [
+        {
+          "id": "1:3402199209204560451",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:1500783609055704916",
+          "name": "supabaseId",
+          "indexId": "1:6866966732565679877",
+          "type": 6,
+          "flags": 8
+        },
+        {
+          "id": "3:7406262492540615448",
+          "name": "organizationMemberId",
+          "indexId": "2:6431514294616950613",
+          "type": 6,
+          "flags": 8
+        },
+        {
+          "id": "4:2682720488624567500",
+          "name": "organizationId",
+          "indexId": "3:8019318450993208849",
+          "type": 6,
+          "flags": 8
+        },
+        {
+          "id": "5:7758713399080141305",
+          "name": "biometricType",
+          "type": 9
+        },
+        {
+          "id": "6:8687163500449847191",
+          "name": "embedding",
+          "type": 29
+        },
+        {
+          "id": "7:521614463182906869",
+          "name": "templateData",
+          "type": 9
+        },
+        {
+          "id": "8:386134870345963688",
+          "name": "enrollmentDate",
+          "type": 10
+        },
+        {
+          "id": "9:223527512677685691",
+          "name": "lastUsedAt",
+          "type": 10
+        },
+        {
+          "id": "10:8900197980814353654",
+          "name": "isActive",
+          "type": 1
+        },
+        {
+          "id": "11:2100900591206156797",
+          "name": "userName",
+          "type": 9
+        },
+        {
+          "id": "12:197560662218698175",
+          "name": "departmentName",
+          "type": 9
+        },
+        {
+          "id": "13:3978973541668453485",
+          "name": "profilePhotoUrl",
+          "type": 9
+        }
+      ],
+      "relations": []
+    }
+  ],
+  "lastEntityId": "1:6611366526790277060",
+  "lastIndexId": "3:8019318450993208849",
+  "lastRelationId": "0:0",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 5,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}

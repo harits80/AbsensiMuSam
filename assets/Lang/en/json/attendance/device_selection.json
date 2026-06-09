@@ -1,0 +1,22 @@
+{
+    "title": "Select Location",
+    "search_placeholder": "Search destination...",
+    "nearby_header": "NEARBY DESTINATIONS",
+    "current_location_header": "CURRENT LOCATION",
+    "shift_header": "WORK SHIFT",
+    "select_shift_prompt": "Select Shift",
+    "no_shift_selected": "Please select shift first",
+    "out_of_range": "Out of Range",
+    "away": "away",
+    "verification_title": "Location Verification",
+    "verification_subtitle": "Make sure your position is correct",
+    "within_range": "WITHIN RANGE",
+    "distance_from_target": "meters from destination",
+    "confirm_use_location": "Confirm & Use Location",
+    "live_location": "Live Location",
+    "accuracy": "ACCURACY",
+    "radius": "radius",
+    "no_locations_available": "No locations available",
+    "no_locations_found": "No locations found",
+    "shift_picker_subtitle": "Adjust your shift with your current work schedule"
+}

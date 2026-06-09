@@ -1,0 +1,20 @@
+{
+    "dashboard_title": "Officer Dashboard",
+    "total_members": "Total Members",
+    "active_shift": "Active Shift",
+    "today_attendance": "Today's Attendance",
+    "recent_activity": "Recent Activity",
+    "weekly_overview": "Weekly Overview",
+    "no_recent_activity": "No recent activity",
+    "this_week": "THIS WEEK",
+    "hours": "HOURS",
+    "total_hours": "hrs",
+    "office_location": "Office Location",
+    "selfie_gps": "Selfie & GPS",
+    "check_in": "Check In",
+    "check_out": "Check Out",
+    "on_time": "ON TIME",
+    "join_new_organization": "Join New Organization",
+    "switch_organization": "Switch Organization",
+    "activity": "Activity"
+}

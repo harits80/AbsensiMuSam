@@ -1,0 +1,22 @@
+{
+    "title": "Pilih Lokasi",
+    "search_placeholder": "Cari lokasi...",
+    "nearby_header": "DESTINASI TERDEKAT",
+    "current_location_header": "LOKASI SAAT INI",
+    "shift_header": "SHIFT KERJA",
+    "select_shift_prompt": "Pilih Shift",
+    "no_shift_selected": "Silakan pilih shift kerja terlebih dahulu",
+    "out_of_range": "Di Luar Jangkauan",
+    "away": "jauh",
+    "verification_title": "Verifikasi Lokasi",
+    "verification_subtitle": "Pastikan posisi Anda sudah benar",
+    "within_range": "DALAM JANGKAUAN",
+    "distance_from_target": "meter dari lokasi tujuan",
+    "confirm_use_location": "Konfirmasi & Gunakan Lokasi",
+    "live_location": "Lokasi Terkini",
+    "accuracy": "AKURASI",
+    "radius": "radius",
+    "no_locations_available": "Tidak ada lokasi tersedia",
+    "no_locations_found": "Lokasi tidak ditemukan",
+    "shift_picker_subtitle": "Sesuaikan shift dengan jadwal kerja Anda saat ini"
+}

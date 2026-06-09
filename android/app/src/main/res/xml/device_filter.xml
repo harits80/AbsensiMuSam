@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ZKTeco Fingerprint Scanners (VID = 0x1b55) -->
+    <!-- LIVE20R -->
+    <usb-device vendor-id="6997" product-id="288" />
+    <!-- LIVE10R -->
+    <usb-device vendor-id="6997" product-id="292" />
+    <!-- ZK9500 / SLK20R -->
+    <usb-device vendor-id="6997" product-id="320" />
+    <!-- ZK9500 variant 2 -->
+    <usb-device vendor-id="6997" product-id="336" />
+    <!-- Catch-all for any ZKTeco fingerprint device (VID only) -->
+    <usb-device vendor-id="6997" />
+</resources>
