@@ -13,8 +13,8 @@ import '../services/biometric_service.dart';
 import '../../services/supabase_storage_service.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
-import '../../helpers/voice_helper.dart'; 
-import '../../helpers/language_helper.dart'; // ✅ Added this to fix AppLanguage error
+import '../../helpers/voice_helper.dart';
+import '../../helpers/language_helper.dart';
 
 class FaceRegistrationPage extends StatefulWidget {
   final int organizationMemberId;
@@ -27,10 +27,11 @@ class FaceRegistrationPage extends StatefulWidget {
 
 enum CaptureAngle { front, left, right, complete }
 
-class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
+class _FaceRegistrationPageState extends State<FaceRegistrationPage>
+    with TickerProviderStateMixin {
   CameraController? _cameraController;
   final FaceRecognitionTFLiteService _faceService =
-      FaceRecognitionTFLiteService();
+  FaceRecognitionTFLiteService();
   final BiometricService _biometricService = BiometricService();
   final SupabaseStorageService _storageService = SupabaseStorageService();
 
@@ -56,22 +57,49 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
   String? _frontImagePath;
 
   // Guidance and UI
-  List<Map<String, dynamic>> _painterFaces = []; 
-  bool _isFaceInTargetArea = false; // ✅ Track if face is in silhouette
-  DateTime? _lastProcessTime; 
+  List<Map<String, dynamic>> _painterFaces = [];
+  bool _isFaceInTargetArea = false;
+  DateTime? _lastProcessTime;
   DateTime? _lastGuidanceUpdate;
-  DateTime? _lastVoiceTime; 
-  String? _lastSpokenMessage; // ✅ Prevent repeating same message too quickly
+  DateTime? _lastVoiceTime;
+  String? _lastSpokenMessage;
   Timer? _errorTimer;
+
+  // ✅ NEW: Animation controllers for silhouette pulse & scan line
+  late AnimationController _pulseController;
+  late AnimationController _scanLineController;
+  late Animation<double> _pulseAnimation;
+  late Animation<double> _scanLineAnimation;
 
   @override
   void initState() {
     super.initState();
+
+    // Pulse animation for the oval border glow
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    // Scan line animation (top → bottom of oval)
+    _scanLineController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat();
+    _scanLineAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _scanLineController, curve: Curves.easeInOut),
+    );
+
     _initializeModel();
   }
 
   @override
   void dispose() {
+    _pulseController.dispose();
+    _scanLineController.dispose();
     _stopStream();
     _errorTimer?.cancel();
     _cameraController?.dispose();
@@ -82,10 +110,10 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
   // Helper for debouncing guidance messages
   void _updateGuidance(String message, Color color) {
     final now = DateTime.now();
-    
-    // UI Update logic (Fast for responsiveness)
+
     bool shouldUpdateUI = _lastGuidanceUpdate == null ||
-        now.difference(_lastGuidanceUpdate!) > const Duration(milliseconds: 300) ||
+        now.difference(_lastGuidanceUpdate!) >
+            const Duration(milliseconds: 300) ||
         message != _guidanceMessage;
 
     if (shouldUpdateUI && mounted) {
@@ -96,8 +124,6 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
       });
     }
 
-    // ✅ VOICE LOGIC: Professional & Humanized
-    // 1. Clean message
     String cleanMessage = message
         .replaceAll('← ', '')
         .replaceAll(' →', '')
@@ -106,30 +132,28 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
 
     if (cleanMessage.isEmpty) return;
 
-    // 2. Identification
-    bool isStepChange = message.contains('Tahap') || 
-                        message.contains('Selesai') || 
-                        message.contains('berhasil') ||
-                        message.contains('Bagus') ||
-                        message.contains('Sempurna');
+    bool isStepChange = message.contains('Tahap') ||
+        message.contains('Selesai') ||
+        message.contains('berhasil') ||
+        message.contains('Bagus') ||
+        message.contains('Sempurna');
 
-    // ✅ PRIORITY MESSAGES: Langsung bunyi tanpa nunggu jeda
-    bool isPriority = cleanMessage.contains('Tahan') || 
-                      cleanMessage.contains('Oke');
+    bool isPriority =
+        cleanMessage.contains('Tahan') || cleanMessage.contains('Oke');
 
-    // 3. Spoken Debounce Logic
     bool isNewMessage = cleanMessage != _lastSpokenMessage;
-    
-    // Gap check: Don't speak different things too fast (wait at least 2.5s)
-    bool hasGap = _lastVoiceTime == null || 
-                 now.difference(_lastVoiceTime!) > const Duration(milliseconds: 2500);
 
-    // Repeat check: Don't repeat the same thing too often (wait 7s)
-    bool shouldRepeat = !isNewMessage && (_lastVoiceTime == null || 
-                 now.difference(_lastVoiceTime!) > const Duration(seconds: 7));
+    bool hasGap = _lastVoiceTime == null ||
+        now.difference(_lastVoiceTime!) > const Duration(milliseconds: 2500);
 
-    if (isStepChange || isPriority || (isNewMessage && hasGap) || shouldRepeat) {
-      // Avoid speaking "Tahan posisi" too much - only if it's a new state
+    bool shouldRepeat = !isNewMessage &&
+        (_lastVoiceTime == null ||
+            now.difference(_lastVoiceTime!) > const Duration(seconds: 7));
+
+    if (isStepChange ||
+        isPriority ||
+        (isNewMessage && hasGap) ||
+        shouldRepeat) {
       if (cleanMessage.contains('Tahan') && !isNewMessage) return;
 
       VoiceHelper.speak(cleanMessage, force: isStepChange || isPriority);
@@ -138,7 +162,6 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
     }
   }
 
-  // Helper for auto-clearing errors
   void _showError(String message) {
     if (!mounted) return;
     setState(() {
@@ -187,7 +210,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
 
       final cameras = await availableCameras();
       final frontCamera = cameras.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.front,
+            (camera) => camera.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
 
@@ -201,21 +224,18 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
       );
 
       await _cameraController!.initialize();
-      
-      // ✅ Speed up capture by disabling flash
       await _cameraController!.setFlashMode(FlashMode.off);
 
       if (mounted) {
         setState(() {
           _isCameraInitialized = true;
-          _currentStep = '${AppLanguage.tr('attendance.face.step')} 1 ${AppLanguage.tr('common.of')} 3';
+          _currentStep =
+          '${AppLanguage.tr('attendance.face.step')} 1 ${AppLanguage.tr('common.of')} 3';
           _guidanceMessage = AppLanguage.tr('attendance.face.look_straight');
         });
-        
-        // ✅ VOICE GUIDANCE (Localized) - Force initial guidance
-        VoiceHelper.speak(AppLanguage.tr('attendance.face.look_straight'), force: true);
 
-        // Start silent stream instead of polling timer
+        VoiceHelper.speak(AppLanguage.tr('attendance.face.look_straight'),
+            force: true);
         _startImageStream();
       }
     } catch (e) {
@@ -251,7 +271,6 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
   }
 
   Future<void> _processCameraFrame(CameraImage image) async {
-    // 🚀 THROTTLING: Max ~10 FPS for detection
     final now = DateTime.now();
     if (_lastProcessTime != null &&
         now.difference(_lastProcessTime!) < const Duration(milliseconds: 100)) {
@@ -263,11 +282,9 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
     _lastProcessTime = now;
 
     try {
-      // 1. Convert to InputImage
       final inputImage = await _inputImageFromCameraImage(image);
       if (inputImage == null) return;
 
-      // 2. Detect Faces
       final faces = await _faceService.detectFacesFromInputImage(inputImage);
 
       if (!mounted) return;
@@ -277,7 +294,9 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
         setState(() {
           _painterFaces = [];
           _overlayColor = Colors.transparent;
-          _guidanceMessage = AppLanguage.tr('attendance.face.start_instruction');
+          _guidanceMessage =
+              AppLanguage.tr('attendance.face.start_instruction');
+          _isFaceInTargetArea = false;
         });
       } else {
         final face = faces.first;
@@ -288,38 +307,37 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
 
         if (mounted) {
           setState(() {
-            // Update silhouette state based on validation
             _isFaceInTargetArea = validation['isValid'] == true;
 
             _painterFaces = faces
                 .map(
                   (f) => {
-                    'rect': f.boundingBox,
-                    'color': validation['isValid'] == true
-                        ? Colors.green
-                        : Colors.orange,
-                    'name': validation['message'],
-                  },
-                )
+                'rect': f.boundingBox,
+                'color': validation['isValid'] == true
+                    ? Colors.green
+                    : Colors.orange,
+                'name': validation['message'],
+              },
+            )
                 .toList();
           });
         }
 
         if (validation['isValid'] == true) {
           _consecutiveValidFrames++;
-          _updateGuidance(AppLanguage.tr('attendance.face.perfect_hold'), Colors.green.withOpacity(0.3));
+          _updateGuidance(
+              AppLanguage.tr('attendance.face.perfect_hold'),
+              Colors.green.withOpacity(0.3));
 
-          // Check stability before capturing
           if (_consecutiveValidFrames >= _requiredValidFrames &&
               !_isTakingPicture) {
-            _isTakingPicture = true; // Lock
-            await _stopStream(); // Await stop stream before capture
+            _isTakingPicture = true;
+            await _stopStream();
 
-            // Trigger capture
             setState(() {
               _guidanceMessage = 'Sedang mengambil foto...';
               _currentStep = 'Capturing...';
-              _painterFaces = []; // Clear brackets during freeze-frame capture
+              _painterFaces = [];
             });
 
             final XFile file = await _cameraController!.takePicture();
@@ -341,81 +359,97 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
       _isProcessing = false;
     }
   }
-  
-  // Reuse the validation logic but adapted for Face object
+
   Map<String, dynamic> _validateFace(dynamic face, Size imageSize) {
-    // 1. Basic validation: Eyes must be open
     final double leftEyeOpen = face.leftEyeOpenProbability ?? 0.0;
     final double rightEyeOpen = face.rightEyeOpenProbability ?? 0.0;
 
     if (leftEyeOpen < 0.35 || rightEyeOpen < 0.35) {
-      return {'isValid': false, 'message': AppLanguage.tr('attendance.face.open_eyes')};
+      return {
+        'isValid': false,
+        'message': AppLanguage.tr('attendance.face.open_eyes')
+      };
     }
 
-    // 2. Position Validation: Face must be large enough (not too far)
     final rect = face.boundingBox;
     final double faceSizeRatio = rect.width / imageSize.width;
     if (faceSizeRatio < 0.3) {
-      return {'isValid': false, 'message': AppLanguage.tr('attendance.face.too_far')};
+      return {
+        'isValid': false,
+        'message': AppLanguage.tr('attendance.face.too_far')
+      };
     }
     if (faceSizeRatio > 0.8) {
-      return {'isValid': false, 'message': AppLanguage.tr('attendance.face.too_close')};
+      return {
+        'isValid': false,
+        'message': AppLanguage.tr('attendance.face.too_close')
+      };
     }
 
-    // 3. Angle Validation
-    final double headY = face.headEulerAngleY ?? 0.0; // Left/Right
-    final double headX = face.headEulerAngleX ?? 0.0; // Up/Down
-    final double headZ = (face.headEulerAngleZ ?? 0.0).abs(); // Tilt
+    final double headY = face.headEulerAngleY ?? 0.0;
+    final double headX = face.headEulerAngleX ?? 0.0;
+    final double headZ = (face.headEulerAngleZ ?? 0.0).abs();
 
-    // Anti-tilt: Jangan miringkan kepala
     if (headZ > 30.0) {
       return {
         'isValid': false,
         'message': AppLanguage.tr('attendance.face.keep_straight'),
-      }; 
+      };
     }
 
     switch (_currentAngle) {
       case CaptureAngle.front:
-        // Front pose needs to be relatively straight
-        // Increased tolerance from 10 to 18 degrees for better UX
         if (headY.abs() > 18.0) {
           return {
             'isValid': false,
             'message': AppLanguage.tr('attendance.face.look_straight'),
-          }; 
+          };
         }
         if (headX.abs() > 18.0) {
-          return {'isValid': false, 'message': AppLanguage.tr('attendance.face.align_face')};
+          return {
+            'isValid': false,
+            'message': AppLanguage.tr('attendance.face.align_face')
+          };
         }
         break;
 
       case CaptureAngle.left:
-        // User needs to turn head to their LEFT
-        // Threshold: 15 to 45 degrees
         if (headY < 15.0) {
-          return {'isValid': false, 'message': AppLanguage.tr('attendance.face.turn_left')};
+          return {
+            'isValid': false,
+            'message': AppLanguage.tr('attendance.face.turn_left')
+          };
         }
         if (headY > 50.0) {
-          return {'isValid': false, 'message': AppLanguage.tr('attendance.face.too_far')};
+          return {
+            'isValid': false,
+            'message': AppLanguage.tr('attendance.face.too_far')
+          };
         }
         break;
 
       case CaptureAngle.right:
-        // User needs to turn head to their RIGHT
-        // Threshold: -15 to -45 degrees
         if (headY > -15.0) {
-          return {'isValid': false, 'message': AppLanguage.tr('attendance.face.turn_right')};
+          return {
+            'isValid': false,
+            'message': AppLanguage.tr('attendance.face.turn_right')
+          };
         }
         if (headY < -50.0) {
-          return {'isValid': false, 'message': AppLanguage.tr('attendance.face.too_far')};
+          return {
+            'isValid': false,
+            'message': AppLanguage.tr('attendance.face.too_far')
+          };
         }
         break;
       default:
         break;
     }
 
-    return {'isValid': true, 'message': AppLanguage.tr('attendance.face.perfect_hold')};
+    return {
+      'isValid': true,
+      'message': AppLanguage.tr('attendance.face.perfect_hold')
+    };
   }
 
   Future<void> _processCapturedAngle(String imagePath) async {
@@ -428,33 +462,28 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
         _currentStep = 'Memproses...';
       });
 
-      // ✅ VOICE GUIDANCE - Simple feedback
       VoiceHelper.speak(successMsg, force: true);
 
-      // Extract features for this angle
       final faceTemplate = await _faceService.extractFaceFeatures(
         imagePath,
         allowSidePose: _currentAngle != CaptureAngle.front,
       );
 
-      // ✅ HIGH STANDARD VALIDATION: Mandatory thresholds
       double qualityScore =
           (faceTemplate['qualityScore'] as num?)?.toDouble() ?? 0.0;
-
-      // 🚀 User Requirement: "Kalau tidak memenuhi standart itu tidak bisa register"
       double minQuality = _currentAngle == CaptureAngle.front ? 0.90 : 0.65;
 
       if (qualityScore < minQuality) {
         setState(() {
-          _overlayColor = Colors.red; // More urgent than orange
+          _overlayColor = Colors.red;
         });
         _updateGuidance(
           '${AppLanguage.tr('attendance.face.low_quality')} (${(qualityScore * 100).toInt()}%). ${AppLanguage.tr('attendance.face.need_lighting')}',
           Colors.red,
         );
-        
-        // ✅ VOICE GUIDANCE (Localized) - Force alert
-        VoiceHelper.speak(AppLanguage.tr('attendance.face.low_quality'), force: true);
+
+        VoiceHelper.speak(AppLanguage.tr('attendance.face.low_quality'),
+            force: true);
 
         await Future.delayed(const Duration(seconds: 2));
         await File(imagePath).delete();
@@ -463,16 +492,14 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
         return;
       }
 
-      // Store template
       _capturedTemplates[_currentAngle] = faceTemplate;
 
       if (_currentAngle == CaptureAngle.front) {
-        _frontImagePath = imagePath; // Keep front image
+        _frontImagePath = imagePath;
       } else {
-        await File(imagePath).delete(); // Delete others
+        await File(imagePath).delete();
       }
 
-      // PROGRESS LOGIC
       if (_currentAngle == CaptureAngle.front) {
         _currentAngle = CaptureAngle.left;
         _resetStreamForAngle(
@@ -486,7 +513,6 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
           AppLanguage.tr('attendance.face.turn_right'),
         );
       } else {
-        // Complete
         setState(() {
           _guidanceMessage = 'Selesai! Menyimpan...';
           _isRegistrationComplete = true;
@@ -511,9 +537,10 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
       _guidanceMessage = msg;
       _overlayColor = Colors.blue;
     });
-    
-    // ✅ VOICE GUIDANCE - Force step instructions
-    VoiceHelper.speak(msg.replaceAll('← ', '').replaceAll(' →', ''), force: true);
+
+    VoiceHelper.speak(
+        msg.replaceAll('← ', '').replaceAll(' →', ''),
+        force: true);
   }
 
   Future<void> _finalizeMultiAngleRegistration() async {
@@ -521,12 +548,10 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
       _isLoading = true;
       _currentStep = 'Menyimpan...';
     });
-    
-    // ✅ VOICE GUIDANCE
+
     VoiceHelper.speak("Sedang menyimpan data");
 
     try {
-      // 1. Combine templates
       final List<Map<String, dynamic>> combinedList = [];
       if (_capturedTemplates.containsKey(CaptureAngle.front)) {
         combinedList.add(_capturedTemplates[CaptureAngle.front]!);
@@ -539,13 +564,12 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
       }
 
       final multiTemplate = {
-        'version': 4, // Aligned with high-standard container version
+        'version': 4,
         'templates': combinedList,
         'totalAngles': combinedList.length,
         'enrollmentDate': DateTime.now().toIso8601String(),
       };
 
-      // 2. Upload Front Photo
       if (_frontImagePath != null) {
         final imageFile = File(_frontImagePath!);
         final processedFile = await _processImage(imageFile);
@@ -554,7 +578,6 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
           widget.organizationMemberId,
         );
 
-        // Clean up
         if (await imageFile.exists()) await imageFile.delete();
         if (processedFile.path != imageFile.path) {
           final pf = File(processedFile.path);
@@ -562,7 +585,6 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
         }
       }
 
-      // 3. Register to Database
       await _biometricService.registerFaceTemplate(
         organizationMemberId: widget.organizationMemberId,
         faceTemplate: multiTemplate,
@@ -570,8 +592,8 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
 
       if (mounted) {
         _showSuccessDialog();
-        // ✅ VOICE GUIDANCE (Localized)
-        VoiceHelper.speak(AppLanguage.tr('attendance.face.registration_success'));
+        VoiceHelper.speak(
+            AppLanguage.tr('attendance.face.registration_success'));
       }
     } catch (e) {
       _showError('Gagal registrasi: $e');
@@ -579,7 +601,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
         _isLoading = false;
         _isRegistrationComplete = false;
       });
-      _currentAngle = CaptureAngle.front; // Reset
+      _currentAngle = CaptureAngle.front;
       _startImageStream();
     }
   }
@@ -648,14 +670,10 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
       final imageBytes = await imageFile.readAsBytes();
       final image = img.decodeImage(imageBytes);
 
-      if (image == null) {
-        return imageFile;
-      }
+      if (image == null) return imageFile;
 
       var enhanced = img.adjustColor(image, brightness: 1.1, contrast: 1.15);
-
       final flipped = img.flipHorizontal(enhanced);
-
       final resized = img.copyResize(
         flipped,
         width: 800,
@@ -663,7 +681,6 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
       );
 
       final compressedBytes = img.encodeJpg(resized, quality: 90);
-
       final tempDir = await Directory.systemTemp.createTemp();
       final processedFile = File('${tempDir.path}/processed_face.jpg');
       await processedFile.writeAsBytes(compressedBytes);
@@ -674,26 +691,22 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
     }
   }
 
-  // Helper for CameraImage -> InputImage
   Future<InputImage?> _inputImageFromCameraImage(CameraImage image) async {
     if (_cameraController == null) return null;
 
     final camera = _cameraController!.description;
     final sensorOrientation = camera.sensorOrientation;
 
-    // Determine rotation
     InputImageRotation? rotation;
     if (Platform.isIOS) {
       rotation = InputImageRotation.rotation0deg;
     } else if (Platform.isAndroid) {
       var rotationCompensation =
-          _orientations[_cameraController!.value.deviceOrientation];
+      _orientations[_cameraController!.value.deviceOrientation];
       if (rotationCompensation == null) return null;
       if (camera.lensDirection == CameraLensDirection.front) {
-        // Front camera
         rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
       } else {
-        // Back camera
         rotationCompensation =
             (sensorOrientation - rotationCompensation + 360) % 360;
       }
@@ -701,27 +714,23 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
     }
     if (rotation == null) return null;
 
-    // Format
-    InputImageFormat? format = InputImageFormatValue.fromRawValue(
-      image.format.raw,
-    );
+    InputImageFormat? format =
+    InputImageFormatValue.fromRawValue(image.format.raw);
     if (format == null) return null;
 
-    // Bytes
     final Uint8List bytes;
     int bytesPerRow;
 
     if (Platform.isAndroid && image.format.group == ImageFormatGroup.yuv420) {
-      // ✅ OPTIMIZATION: Run heavy conversion in background isolate
       try {
         final planesData = image.planes
             .map(
               (p) => _PlaneData(
-                bytes: p.bytes,
-                bytesPerRow: p.bytesPerRow,
-                bytesPerPixel: p.bytesPerPixel,
-              ),
-            )
+            bytes: p.bytes,
+            bytesPerRow: p.bytesPerRow,
+            bytesPerPixel: p.bytesPerPixel,
+          ),
+        )
             .toList();
 
         bytes = await compute(
@@ -740,7 +749,6 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
         return null;
       }
     } else {
-      // Regular concatenation for other formats
       final WriteBuffer allBytes = WriteBuffer();
       for (final Plane plane in image.planes) {
         allBytes.putUint8List(plane.bytes);
@@ -767,25 +775,47 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
     DeviceOrientation.landscapeRight: 270,
   };
 
+  // ─────────────────────────────────────────────────────────────────
+  //  BUILD
+  // ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          icon: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.35),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: const Icon(Icons.close, color: Colors.white, size: 18),
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           'Register Face',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
+          ),
         ),
+        centerTitle: true,
       ),
       body: Stack(
         children: [
-          // 1. FULL CAMERA BACKGROUND
+          // ── 1. CAMERA BACKGROUND ──────────────────────────────────
           if (_isCameraInitialized && _cameraController != null)
             Positioned.fill(
               child: FittedBox(
@@ -798,18 +828,30 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
               ),
             )
           else
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
+            const Center(
+                child: CircularProgressIndicator(color: Colors.white)),
 
-          // ✅ 2. SILHOUETTE GUIDE (Always on top of preview)
-          Positioned.fill(
-            child: CustomPaint(
-              painter: SilhouettePainter(
-                isActive: _isFaceInTargetArea,
+          // ── 2. ANIMATED BLUR SILHOUETTE ───────────────────────────
+          if (_isCameraInitialized)
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: Listenable.merge(
+                    [_pulseAnimation, _scanLineAnimation]),
+                builder: (context, child) {
+                  return _BlurSilhouetteWidget(
+                    isActive: _isFaceInTargetArea,
+                    isTakingPicture: _isTakingPicture,
+                    currentAngle: _currentAngle,
+                    pulseValue: _pulseAnimation.value,
+                    scanLineValue: _scanLineAnimation.value,
+                    consecutiveFrames: _consecutiveValidFrames,
+                    requiredFrames: _requiredValidFrames,
+                  );
+                },
               ),
             ),
-          ),
 
-          // 3. DYNAMIC FACE BRACKETS (Optimized CustomPainter)
+          // ── 3. FACE BRACKETS ─────────────────────────────────────
           if (_painterFaces.isNotEmpty &&
               _cameraController != null &&
               _cameraController!.value.previewSize != null)
@@ -825,108 +867,17 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
                 ),
               ),
             ),
-          // 4. PROGRESS CARD
+
+          // ── 4. BOTTOM PROGRESS CARD ───────────────────────────────
           if (_isCameraInitialized && _isModelInitialized)
             Positioned(
               left: 20,
               right: 20,
-              bottom: 30, // Positioned slightly lower
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 28,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF8938DF), // Light Purple from Dashboard
-                      Color(0xFF4A1E79), // Dark Purple from Dashboard
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(36),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
-                      blurRadius: 25,
-                      offset: const Offset(0, 15),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _guidanceMessage.isNotEmpty
-                          ? _guidanceMessage
-                          : 'Scanning your face...',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22, // Slightly larger like mockup
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _currentStep,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text(
-                          'PROGRESS',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.8,
-                          ),
-                        ),
-                        Text(
-                          '${_getProgressPercentage().toInt()}%',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        height: 7, // Thinner progress bar
-                        width: double.infinity,
-                        color: Colors.white.withOpacity(0.15),
-                        child: FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: _getProgressPercentage() / 100,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              bottom: 30,
+              child: _buildProgressCard(),
             ),
 
-          // Error message overlay
+          // ── 5. ERROR BANNER ───────────────────────────────────────
           if (_errorMessage != null)
             Positioned(
               top: 10,
@@ -957,7 +908,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
               ),
             ),
 
-          // Loading overlay
+          // ── 6. LOADING OVERLAY ────────────────────────────────────
           if (_isLoading)
             Positioned.fill(
               child: Container(
@@ -968,6 +919,109 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildProgressCard() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(36),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF8938DF).withOpacity(0.82),
+                const Color(0xFF4A1E79).withOpacity(0.92),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(36),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.15),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.4),
+                blurRadius: 25,
+                offset: const Offset(0, 15),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _guidanceMessage.isNotEmpty
+                    ? _guidanceMessage
+                    : 'Scanning your face...',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _currentStep,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              const SizedBox(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'PROGRESS',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.8,
+                    ),
+                  ),
+                  Text(
+                    '${_getProgressPercentage().toInt()}%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  height: 7,
+                  width: double.infinity,
+                  color: Colors.white.withOpacity(0.15),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: _getProgressPercentage() / 100,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -990,18 +1044,295 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage> {
         return 100;
     }
 
-    // Add small visual progress for validation success
-    if (_isTakingPicture) return base + 30; // Almost done with step
-    if (_consecutiveValidFrames > 0) return base + 15; // Validating
+    if (_isTakingPicture) return base + 30;
+    if (_consecutiveValidFrames > 0) return base + 15;
 
-    return base + 5; // Started step
+    return base + 5;
   }
-
-  // Helper for progress percentage removed as it's defined elsewhere if needed
-  // ...
 }
 
-/// ✅ SYNC: Optimized Custom Painter for all faces (matching attendance page)
+// ─────────────────────────────────────────────────────────────────────────────
+//  ✅ SILHOUETTE WIDGET — Dribbble style
+//  • Full camera visible (no background blur/dim)
+//  • White dashed oval border
+//  • Purple corner brackets (app brand color)
+//  • Purple validation arc filling as face locks in
+//  • Capture flash on shutter
+// ─────────────────────────────────────────────────────────────────────────────
+
+// App brand purple (matching progress card gradient)
+const Color _kPurplePrimary = Color(0xFF8938DF);
+const Color _kPurpleLight  = Color(0xFFAD6FEF);
+
+class _BlurSilhouetteWidget extends StatelessWidget {
+  final bool isActive;
+  final bool isTakingPicture;
+  final CaptureAngle currentAngle;
+  final double pulseValue;    // 0.6 → 1.0
+  final double scanLineValue; // 0.0 → 1.0
+  final int consecutiveFrames;
+  final int requiredFrames;
+
+  const _BlurSilhouetteWidget({
+    required this.isActive,
+    required this.isTakingPicture,
+    required this.currentAngle,
+    required this.pulseValue,
+    required this.scanLineValue,
+    required this.consecutiveFrames,
+    required this.requiredFrames,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _SilhouetteOverlayPainter(
+        isActive: isActive,
+        isTakingPicture: isTakingPicture,
+        currentAngle: currentAngle,
+        pulseValue: pulseValue,
+        scanLineValue: scanLineValue,
+        consecutiveFrames: consecutiveFrames,
+        requiredFrames: requiredFrames,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SILHOUETTE OVERLAY PAINTER
+// ─────────────────────────────────────────────────────────────────────────────
+class _SilhouetteOverlayPainter extends CustomPainter {
+  final bool isActive;
+  final bool isTakingPicture;
+  final CaptureAngle currentAngle;
+  final double pulseValue;
+  final double scanLineValue;
+  final int consecutiveFrames;
+  final int requiredFrames;
+
+  _SilhouetteOverlayPainter({
+    required this.isActive,
+    required this.isTakingPicture,
+    required this.currentAngle,
+    required this.pulseValue,
+    required this.scanLineValue,
+    required this.consecutiveFrames,
+    required this.requiredFrames,
+  });
+
+  Rect _ovalRect(Size size) {
+    final double centerX = size.width / 2;
+    final double centerY = size.height * 0.42;
+    final double ovalWidth = size.width * 0.72;
+    final double ovalHeight = ovalWidth * 1.35;
+    return Rect.fromCenter(
+      center: Offset(centerX, centerY),
+      width: ovalWidth,
+      height: ovalHeight,
+    );
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final oval = _ovalRect(size);
+
+    // 1. White dashed oval border (always visible)
+    _drawDashedOvalBorder(canvas, oval);
+
+    // 2. Purple corner brackets (4 corners of the oval)
+    _drawCornerBrackets(canvas, oval);
+
+    // 3. Purple validation arc (grows as face locks in)
+    if (consecutiveFrames > 0 && !isTakingPicture) {
+      _drawValidationArc(canvas, oval);
+    }
+
+    // 4. Capture flash
+    if (isTakingPicture) {
+      _drawCaptureFlash(canvas, oval);
+    }
+  }
+
+  // ── 1. White dashed oval ───────────────────────────────────────────
+  void _drawDashedOvalBorder(Canvas canvas, Rect oval) {
+    final Paint dashPaint = Paint()
+      ..color = Colors.white.withOpacity(isActive ? 0.95 : 0.75)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+
+    const double dashLen = 12.0;
+    const double gapLen  = 8.0;
+    final double circumference = math.pi * (oval.width + oval.height) / 2;
+    final int count = (circumference / (dashLen + gapLen)).floor();
+    final double angleStep = (2 * math.pi) / count;
+    final double sweepAngle = (dashLen / circumference) * 2 * math.pi;
+
+    // Slight rotation offset while active (gives a "locking" spin feel)
+    final double offset = isActive ? scanLineValue * 2 * math.pi * 0.08 : 0.0;
+
+    for (int i = 0; i < count; i++) {
+      canvas.drawArc(
+        oval,
+        i * angleStep + offset,
+        sweepAngle,
+        false,
+        dashPaint,
+      );
+    }
+  }
+
+  // ── 2. Purple corner brackets ──────────────────────────────────────
+  //  4 L-shaped brackets placed at the top-left, top-right,
+  //  bottom-left, bottom-right of the oval's bounding box,
+  //  with a small circular dot at each bracket tip (matching Dribbble ref).
+  void _drawCornerBrackets(Canvas canvas, Rect oval) {
+    // Bracket color: purple when idle/valid, bright purple on valid
+    final Color bracketColor = isActive
+        ? _kPurpleLight.withOpacity(pulseValue)
+        : _kPurplePrimary.withOpacity(0.9);
+
+    final Paint linePaint = Paint()
+      ..color = bracketColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final Paint dotPaint = Paint()
+      ..color = bracketColor
+      ..style = PaintingStyle.fill;
+
+    // Length of each bracket arm
+    const double arm = 32.0;
+    // How far inset from the exact corner of the bounding oval (along arc)
+    const double inset = 14.0;
+
+    // We place brackets at 4 approximate oval "corners":
+    // They sit slightly outside the oval edge for clarity.
+    const double pad = 6.0; // gap outside the oval
+
+    // Top-Left corner area  (~315° / -45° on the oval)
+    _drawOneBracket(
+      canvas, linePaint, dotPaint,
+      corner: Offset(oval.left + inset, oval.top + inset),
+      dx1: arm, dy1: 0,  // horizontal arm →
+      dx2: 0,  dy2: arm, // vertical arm ↓
+      pad: pad,
+    );
+
+    // Top-Right corner (~45°)
+    _drawOneBracket(
+      canvas, linePaint, dotPaint,
+      corner: Offset(oval.right - inset, oval.top + inset),
+      dx1: -arm, dy1: 0,
+      dx2: 0,   dy2: arm,
+      pad: pad,
+    );
+
+    // Bottom-Left corner (~225°)
+    _drawOneBracket(
+      canvas, linePaint, dotPaint,
+      corner: Offset(oval.left + inset, oval.bottom - inset),
+      dx1: arm, dy1: 0,
+      dx2: 0,  dy2: -arm,
+      pad: pad,
+    );
+
+    // Bottom-Right corner (~135°)
+    _drawOneBracket(
+      canvas, linePaint, dotPaint,
+      corner: Offset(oval.right - inset, oval.bottom - inset),
+      dx1: -arm, dy1: 0,
+      dx2: 0,   dy2: -arm,
+      pad: pad,
+    );
+  }
+
+  void _drawOneBracket(
+      Canvas canvas,
+      Paint linePaint,
+      Paint dotPaint, {
+        required Offset corner,
+        required double dx1,
+        required double dy1,
+        required double dx2,
+        required double dy2,
+        required double pad,
+      }) {
+    final Offset end1 = corner + Offset(dx1, dy1);
+    final Offset end2 = corner + Offset(dx2, dy2);
+
+    canvas.drawLine(corner, end1, linePaint);
+    canvas.drawLine(corner, end2, linePaint);
+
+    // Small circular dot at the corner tip (Dribbble detail)
+    canvas.drawCircle(corner, 4.5, dotPaint);
+  }
+
+  // ── 3. Purple validation arc ───────────────────────────────────────
+  void _drawValidationArc(Canvas canvas, Rect oval) {
+    final double progress =
+    (consecutiveFrames / requiredFrames).clamp(0.0, 1.0);
+
+    // Subtle glow underneath
+    final Paint glowPaint = Paint()
+      ..color = _kPurplePrimary.withOpacity(0.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 10.0
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6.0)
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      oval,
+      -math.pi / 2,
+      2 * math.pi * progress,
+      false,
+      glowPaint,
+    );
+
+    // Solid arc on top
+    final Paint arcPaint = Paint()
+      ..color = _kPurpleLight
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.5
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      oval,
+      -math.pi / 2,
+      2 * math.pi * progress,
+      false,
+      arcPaint,
+    );
+  }
+
+  // ── 4. Capture flash ───────────────────────────────────────────────
+  void _drawCaptureFlash(Canvas canvas, Rect oval) {
+    final flashPaint = Paint()
+      ..color = Colors.white.withOpacity(0.22)
+      ..style = PaintingStyle.fill;
+
+    canvas.save();
+    canvas.clipPath(Path()..addOval(oval));
+    canvas.drawRect(oval.inflate(50), flashPaint);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_SilhouetteOverlayPainter old) =>
+      old.isActive != isActive ||
+          old.isTakingPicture != isTakingPicture ||
+          old.pulseValue != pulseValue ||
+          old.scanLineValue != scanLineValue ||
+          old.consecutiveFrames != consecutiveFrames ||
+          old.currentAngle != currentAngle;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  FACE DETECTOR PAINTER (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 class FaceDetectorPainter extends CustomPainter {
   final Size absoluteImageSize;
   final List<Map<String, dynamic>> faces;
@@ -1034,7 +1365,6 @@ class FaceDetectorPainter extends CustomPainter {
       final color = face['color'] as Color;
       final nameLabel = face['name'] as String?;
 
-      // Apply scaling and mirroring
       double left, right;
       if (isFrontCamera) {
         left = (absoluteImageSize.width - rect.right) * scaleX;
@@ -1048,66 +1378,24 @@ class FaceDetectorPainter extends CustomPainter {
 
       final mappedRect = Rect.fromLTRB(left, top, right, bottom);
 
-      // 1. Draw main rounded box with low opacity
       boxPaint.color = color.withOpacity(0.4);
       canvas.drawRRect(
         RRect.fromRectAndRadius(mappedRect, const Radius.circular(12)),
         boxPaint,
       );
 
-      // 2. Draw Brackets
       bracketPaint.color = color;
       const bSize = 20.0;
 
-      // Top-Left
-      canvas.drawLine(
-        Offset(left, top + bSize),
-        Offset(left, top),
-        bracketPaint,
-      );
-      canvas.drawLine(
-        Offset(left, top),
-        Offset(left + bSize, top),
-        bracketPaint,
-      );
+      canvas.drawLine(Offset(left, top + bSize), Offset(left, top), bracketPaint);
+      canvas.drawLine(Offset(left, top), Offset(left + bSize, top), bracketPaint);
+      canvas.drawLine(Offset(right - bSize, top), Offset(right, top), bracketPaint);
+      canvas.drawLine(Offset(right, top), Offset(right, top + bSize), bracketPaint);
+      canvas.drawLine(Offset(left, bottom - bSize), Offset(left, bottom), bracketPaint);
+      canvas.drawLine(Offset(left, bottom), Offset(left + bSize, bottom), bracketPaint);
+      canvas.drawLine(Offset(right - bSize, bottom), Offset(right, bottom), bracketPaint);
+      canvas.drawLine(Offset(right, bottom), Offset(right, bottom - bSize), bracketPaint);
 
-      // Top-Right
-      canvas.drawLine(
-        Offset(right - bSize, top),
-        Offset(right, top),
-        bracketPaint,
-      );
-      canvas.drawLine(
-        Offset(right, top),
-        Offset(right, top + bSize),
-        bracketPaint,
-      );
-
-      // Bottom-Left
-      canvas.drawLine(
-        Offset(left, bottom - bSize),
-        Offset(left, bottom),
-        bracketPaint,
-      );
-      canvas.drawLine(
-        Offset(left, bottom),
-        Offset(left + bSize, bottom),
-        bracketPaint,
-      );
-
-      // Bottom-Right
-      canvas.drawLine(
-        Offset(right - bSize, bottom),
-        Offset(right, bottom),
-        bracketPaint,
-      );
-      canvas.drawLine(
-        Offset(right, bottom),
-        Offset(right, bottom - bSize),
-        bracketPaint,
-      );
-
-      // 3. Draw Name/Status Label (if present)
       if (nameLabel != null && nameLabel.isNotEmpty) {
         final textSpan = TextSpan(
           text: nameLabel,
@@ -1118,10 +1406,9 @@ class FaceDetectorPainter extends CustomPainter {
             shadows: [Shadow(blurRadius: 2, color: Colors.black)],
           ),
         );
-        final textPainter = TextPainter(
-          text: textSpan,
-          textDirection: TextDirection.ltr,
-        )..layout();
+        final textPainter =
+        TextPainter(text: textSpan, textDirection: TextDirection.ltr)
+          ..layout();
 
         final labelBgPaint = Paint()..color = color.withOpacity(0.8);
         final labelRect = Rect.fromLTWH(
@@ -1135,10 +1422,7 @@ class FaceDetectorPainter extends CustomPainter {
           RRect.fromRectAndRadius(labelRect, const Radius.circular(6)),
           labelBgPaint,
         );
-        textPainter.paint(
-          canvas,
-          Offset(left + 6, top - textPainter.height - 6),
-        );
+        textPainter.paint(canvas, Offset(left + 6, top - textPainter.height - 6));
       }
     }
   }
@@ -1146,91 +1430,12 @@ class FaceDetectorPainter extends CustomPainter {
   @override
   bool shouldRepaint(FaceDetectorPainter oldDelegate) =>
       oldDelegate.faces != faces ||
-      oldDelegate.absoluteImageSize != absoluteImageSize;
+          oldDelegate.absoluteImageSize != absoluteImageSize;
 }
 
-/// ✅ SILHOUETTE PAINTER: Professional Blur Cutout style (Reference: Apple/Banking UI)
-class SilhouettePainter extends CustomPainter {
-  final bool isActive;
-
-  SilhouettePainter({
-    required this.isActive,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final double width = size.width;
-    final double height = size.height;
-    final double centerX = width / 2;
-    final double centerY = height * 0.42;
-
-    // 1. Define the oval area
-    final double ovalWidth = width * 0.72;
-    final double ovalHeight = ovalWidth * 1.35;
-    final Rect ovalRect = Rect.fromCenter(
-      center: Offset(centerX, centerY),
-      width: ovalWidth,
-      height: ovalHeight,
-    );
-
-    // 2. DRAW BLURRED OVERLAY
-    // We draw a large rectangle covering the screen with a hole in the middle
-    final Paint overlayPaint = Paint()
-      ..color = Colors.black.withOpacity(0.65)
-      ..style = PaintingStyle.fill;
-
-    // Create a path with a hole
-    final Path backgroundPath = Path()..addRect(Rect.fromLTWH(0, 0, width, height));
-    final Path holePath = Path()..addOval(ovalRect);
-    final Path combinedPath = Path.combine(
-      PathOperation.difference,
-      backgroundPath,
-      holePath,
-    );
-
-    canvas.drawPath(combinedPath, overlayPaint);
-
-    // 3. DRAW SOFT GLOW/BLUR EDGE
-    // This creates the "blurred" transition effect around the cutout
-    final Paint glowPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 45.0 
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 25.0) 
-      ..color = Colors.black.withOpacity(0.85);
-
-    canvas.drawOval(ovalRect.inflate(22), glowPaint);
-
-    // 4. DRAW DASHED BORDER
-    final Color borderColor = isActive ? const ui.Color(0xFF10B981) : Colors.white;
-    final Paint dashPaint = Paint()
-      ..color = borderColor.withOpacity(0.9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round;
-
-    _drawDashedOval(canvas, ovalRect, dashPaint);
-  }
-
-  void _drawDashedOval(Canvas canvas, Rect rect, Paint paint) {
-    const double dashWidth = 14.0;
-    const double dashSpace = 10.0;
-    final double circumference = math.pi * (rect.width + rect.height) / 2;
-    final int dashCount = (circumference / (dashWidth + dashSpace)).floor();
-    final double angleStep = (2 * math.pi) / dashCount;
-
-    for (int i = 0; i < dashCount; i++) {
-      final double startAngle = i * angleStep;
-      final double sweepAngle = (dashWidth / circumference) * (2 * math.pi);
-      canvas.drawArc(rect, startAngle, sweepAngle, false, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(SilhouettePainter oldDelegate) => 
-      oldDelegate.isActive != isActive;
-}
-
-// ✅ ISOLATE WRAPPERS (Top-Level)
+// ─────────────────────────────────────────────────────────────────────────────
+//  ISOLATE WRAPPERS (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 class _PlaneData {
   final Uint8List bytes;
   final int bytesPerRow;
@@ -1262,7 +1467,6 @@ Uint8List _yuv420ToNv21Compute(_NV21ConvertParams params) {
   final int uvSize = width * height ~/ 2;
   final Uint8List nv21 = Uint8List(ySize + uvSize);
 
-  // Y Plane
   final _PlaneData yData = planes[0];
   final Uint8List yBytes = yData.bytes;
   final int yStride = yData.bytesPerRow;
@@ -1275,7 +1479,6 @@ Uint8List _yuv420ToNv21Compute(_NV21ConvertParams params) {
     }
   }
 
-  // UV Planes
   final _PlaneData uData = planes[1];
   final _PlaneData vData = planes[2];
   final Uint8List uBytes = uData.bytes;
