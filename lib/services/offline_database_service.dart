@@ -14,7 +14,7 @@ class OfflineDatabaseService {
   OfflineDatabaseService._internal();
 
   static Database? _database;
-  static const _databaseVersion = 10;
+  static const _databaseVersion = 11;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -126,6 +126,9 @@ class OfflineDatabaseService {
       } catch (e) {
         debugPrint('⚠️ Error checking/adding notes column: $e');
       }
+
+      // 4. [PLUS-3] Pastikan audit_logs ada
+      await _ensureAuditLogsTable(db);
     } catch (e) {
       debugPrint('⚠️ Error during self-healing check: $e');
     }
@@ -264,6 +267,9 @@ class OfflineDatabaseService {
         cached_at TEXT NOT NULL
       )
     ''');
+
+    // [PLUS-3] audit_logs
+    await _ensureAuditLogsTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -455,6 +461,11 @@ class OfflineDatabaseService {
       } catch (e) {
         debugPrint('❌ Migration v10 error: $e');
       }
+    }
+
+    if (oldVersion < 11) {
+      await _ensureAuditLogsTable(db);
+      debugPrint('✅ Migration v11: audit_logs table created.');
     }
   }
 
@@ -1450,6 +1461,100 @@ class OfflineDatabaseService {
     } catch (e) {
       debugPrint('❌ Error caching attendance: $e');
       return null;
+    }
+  }
+
+  // ─── [PLUS-3] Tabel audit_logs ─────────────────────────────────────────────
+
+  Future<void> _ensureAuditLogsTable(Database db) async {
+    try {
+      await db.execute('''
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        organization_id INTEGER,
+        action TEXT NOT NULL,
+        face_tracking_id INTEGER,
+        user_name TEXT,
+        organization_member_id INTEGER,
+        confidence_percent TEXT,
+        attendance_mode TEXT,
+        shift TEXT,
+        reason TEXT,
+        is_online INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL
+      )
+    ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_audit_org ON audit_logs(organization_id)',
+      );
+    } catch (e) {
+      debugPrint('⚠️ audit_logs table check: $e');
+    }
+  }
+
+  Future<int?> insertAuditLog(Map<String, dynamic> entry) async {
+    try {
+      final db = await database;
+      final record = {
+        'timestamp':
+            entry['timestamp'] ?? DateTime.now().toIso8601String(),
+        'organization_id': entry['organization_id'],
+        'action': entry['action'] ?? 'unknown',
+        'face_tracking_id': entry['face_tracking_id'],
+        'user_name': entry['user_name'],
+        'organization_member_id': entry['organization_member_id'],
+        'confidence_percent': entry['confidence_percent']?.toString(),
+        'attendance_mode': entry['attendance_mode'],
+        'shift': entry['shift'],
+        'reason': entry['reason'],
+        'is_online': (entry['is_online'] == true) ? 1 : 0,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      return await db.insert('audit_logs', record);
+    } catch (e) {
+      debugPrint('❌ insertAuditLog error: $e');
+      return null;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAuditLogs({
+    int limit = 100,
+    int? organizationId,
+  }) async {
+    try {
+      final db = await database;
+      return await db.query(
+        'audit_logs',
+        where: organizationId != null ? 'organization_id = ?' : null,
+        whereArgs: organizationId != null ? [organizationId] : null,
+        orderBy: 'created_at DESC',
+        limit: limit,
+      );
+    } catch (e) {
+      debugPrint('❌ getAuditLogs error: $e');
+      return [];
+    }
+  }
+
+  Future<int> pruneOldAuditLogs({int days = 30}) async {
+    try {
+      final db = await database;
+      final cutoff = DateTime.now()
+          .toUtc()
+          .subtract(Duration(days: days))
+          .toIso8601String();
+      return await db.delete(
+        'audit_logs',
+        where: 'created_at < ?',
+        whereArgs: [cutoff],
+      );
+    } catch (e) {
+      debugPrint('❌ pruneOldAuditLogs error: $e');
+      return 0;
     }
   }
 }

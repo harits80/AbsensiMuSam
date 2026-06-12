@@ -46,5 +46,9 @@
     "low_quality": "جودة الصورة ضعيفة",
     "need_lighting": "تحتاج إلى إضاءة أفضل",
     "done": "تم",
-    "session_count": "إجمالي الجلسات"
+    "session_count": "إجمالي الجلسات",
+    "no_break_schedule": "لا توجد فترة راحة للنوبة",
+    "select_shift": "اختر النوبة",
+    "current_shift": "النوبة الحالية",
+    "no_shifts": "لا توجد نوبات متاحة"
 }

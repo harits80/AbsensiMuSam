@@ -26,6 +26,6 @@
     "close": "Tutup",
     "member": "Anggota",
     "break_in": "Istirahat Masuk",
-    "b  reak_out": "Istirahat Keluar",
+    "break_out": "Istirahat Keluar",
     "no_break_schedule": "Tidak ada jadwal istirahat untuk shift ini"
 }

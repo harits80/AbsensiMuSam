@@ -98,11 +98,12 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
 
   @override
   void dispose() {
+    _stopStream();
     _pulseController.dispose();
     _scanLineController.dispose();
-    _stopStream();
     _errorTimer?.cancel();
     _cameraController?.dispose();
+    _cameraController = null; // ✅ NEW: Clear controller reference
     _faceService.dispose();
     super.dispose();
   }
@@ -246,11 +247,18 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
   }
 
   void _startImageStream() {
-    if (_cameraController == null || _isStreaming) return;
+    // ✅ IMPROVED: Robust safety checks
+    if (!mounted ||
+        _cameraController == null ||
+        !_cameraController!.value.isInitialized ||
+        _isStreaming) {
+      return;
+    }
 
     try {
       _isStreaming = true;
       _cameraController!.startImageStream((CameraImage image) {
+        if (!mounted) return;
         _processCameraFrame(image);
       });
     } catch (e) {
@@ -260,7 +268,10 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
   }
 
   Future<void> _stopStream() async {
-    if (_cameraController != null && _isStreaming) {
+    // ✅ IMPROVED: Check initialization status
+    if (_cameraController != null &&
+        _cameraController!.value.isInitialized &&
+        _isStreaming) {
       try {
         await _cameraController!.stopImageStream();
       } catch (e) {
@@ -335,12 +346,14 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
             await _stopStream();
 
             setState(() {
-              _guidanceMessage = 'Sedang mengambil foto...';
+              _guidanceMessage = AppLanguage.tr('attendance.face.capturing_photo');
               _currentStep = 'Capturing...';
               _painterFaces = [];
             });
 
+            if (!mounted) return;
             final XFile file = await _cameraController!.takePicture();
+            if (!mounted) return;
             await _processCapturedAngle(file.path);
           }
         } else {
@@ -354,7 +367,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
     } catch (e) {
       debugPrint('Stream process error: $e');
       _isTakingPicture = false;
-      _startImageStream();
+      if (mounted) _startImageStream();
     } finally {
       _isProcessing = false;
     }
@@ -469,6 +482,8 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
         allowSidePose: _currentAngle != CaptureAngle.front,
       );
 
+      if (!mounted) return;
+
       double qualityScore =
           (faceTemplate['qualityScore'] as num?)?.toDouble() ?? 0.0;
       double minQuality = _currentAngle == CaptureAngle.front ? 0.90 : 0.65;
@@ -514,16 +529,16 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
         );
       } else {
         setState(() {
-          _guidanceMessage = 'Selesai! Menyimpan...';
+          _guidanceMessage = '${AppLanguage.tr('attendance.face.done')} ${AppLanguage.tr('attendance.face.saving_data')}';
           _isRegistrationComplete = true;
-          _currentStep = 'Menyimpan Data...';
+          _currentStep = AppLanguage.tr('attendance.face.saving_data');
         });
         await _finalizeMultiAngleRegistration();
       }
     } catch (e) {
       debugPrint('Error processing angle: $e');
       _isTakingPicture = false;
-      _startImageStream();
+      if (mounted) _startImageStream();
       _showError('Gagal memproses: $e');
     }
   }
@@ -546,10 +561,10 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
   Future<void> _finalizeMultiAngleRegistration() async {
     setState(() {
       _isLoading = true;
-      _currentStep = 'Menyimpan...';
+      _currentStep = AppLanguage.tr('attendance.face.saving_data');
     });
 
-    VoiceHelper.speak("Sedang menyimpan data");
+    VoiceHelper.speak(AppLanguage.tr('attendance.face.saving_data'));
 
     try {
       final List<Map<String, dynamic>> combinedList = [];
@@ -573,11 +588,13 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
       if (_frontImagePath != null) {
         final imageFile = File(_frontImagePath!);
         final processedFile = await _processImage(imageFile);
+        if (!mounted) return;
         await _storageService.uploadFaceTemplate(
           processedFile,
           widget.organizationMemberId,
         );
 
+        if (!mounted) return;
         if (await imageFile.exists()) await imageFile.delete();
         if (processedFile.path != imageFile.path) {
           final pf = File(processedFile.path);
@@ -590,6 +607,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
         faceTemplate: multiTemplate,
       );
 
+      if (!mounted) return;
       if (mounted) {
         _showSuccessDialog();
         VoiceHelper.speak(
@@ -632,9 +650,9 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                 child: const Icon(Icons.check, color: Colors.white, size: 44),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Registrasi Selesai!',
-                style: TextStyle(
+              Text(
+                AppLanguage.tr('attendance.face.registration_complete'),
+                style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
                   decoration: TextDecoration.none,
@@ -642,10 +660,10 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Akurasi pengenalan wajah kini lebih tinggi dengan multi-angle.',
+              Text(
+                AppLanguage.tr('attendance.face.accuracy_improvement_info'),
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
                   decoration: TextDecoration.none,
@@ -802,9 +820,9 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Register Face',
-          style: TextStyle(
+        title: Text(
+          AppLanguage.tr('attendance.face.register_face'),
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 17,
             fontWeight: FontWeight.w600,
@@ -959,7 +977,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
               Text(
                 _guidanceMessage.isNotEmpty
                     ? _guidanceMessage
-                    : 'Scanning your face...',
+                    : AppLanguage.tr('attendance.face.scanning_face'),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
@@ -981,9 +999,9 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text(
-                    'PROGRESS',
-                    style: TextStyle(
+                  Text(
+                    AppLanguage.tr('attendance.face.progress').toUpperCase(),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
