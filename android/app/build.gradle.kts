@@ -46,17 +46,24 @@ android {
         }
     }
 
+    // Catatan: Blok rename manual di-comment agar Flutter CLI secara otomatis
+    // memberi nama file sesuai arsitektur (app-arm64-v8a-release.apk, dll) tanpa error/menimpa.
+    /*
     applicationVariants.all {
         if (buildType.name == "release") {
             outputs.all {
                 (this as? com.android.build.gradle.api.ApkVariantOutput)?.let { output ->
-                    if (output.outputFileName.endsWith(".apk")) {
-                        output.outputFileName = "AbsensiMassal.apk"
+                    val abi = output.filters.find { it.filterType.name == "ABI" }?.identifier
+                    output.outputFileName = if (abi != null) {
+                        "AbsensiMassal-$abi.apk"
+                    } else {
+                        "AbsensiMassal.apk"
                     }
                 }
             }
         }
     }
+    */
 
     sourceSets {
         getByName("main") {
